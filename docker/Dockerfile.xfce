@@ -8,12 +8,20 @@ ARG ARG_MERGE_STAGE_MESA_BASE=merge_stage_vnc
 ARG ARG_MERGE_STAGE_BROWSER_BASE=merge_stage_mesa
 ARG ARG_FINAL_STAGE_BASE=merge_stage_browser
 
-
 ###############
 ### stage_cache
 ###############
 
-FROM ${BASEIMAGE}:${BASETAG} as stage_cache
+# FROM ${BASEIMAGE}:${BASETAG} as stage_cache
+# FROM nvidia/cuda:10.2-base-ubuntu18.04 as stage_cache
+# FROM nvidia/cuda:11.0-base-ubuntu20.04 as stage_cache
+# FROM nvidia/cuda:11.2.1-base-ubuntu18.04 as stage_cache
+FROM nvidia/cudagl:10.1-devel-ubuntu18.04 as stage_cache
+
+# Install APL self-signed certificate so I can install things from within the container
+RUN apt-get install -y ca-certificates
+COPY cert.cert /usr/local/share/ca-certificates/cert.crt
+RUN update-ca-certificates
 
 RUN rm -f /etc/apt/apt.conf.d/docker-clean; echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
 RUN apt-get update
@@ -23,7 +31,16 @@ RUN apt-get update
 ### stage_essentials
 ####################
 
-FROM ${BASEIMAGE}:${BASETAG} as stage_essentials
+# FROM ${BASEIMAGE}:${BASETAG} as stage_essentials
+# FROM nvidia/cuda:10.2-base-ubuntu18.04 as stage_essentials
+# FROM nvidia/cuda:11.0-base-ubuntu20.04 as stage_essentials
+# FROM nvidia/cuda:11.2.1-base-ubuntu18.04 as stage_essentials
+FROM nvidia/cudagl:10.1-devel-ubuntu18.04 as stage_essentials
+
+# Install APL self-signed certificate so I can install things from within the container
+RUN apt-get install -y ca-certificates
+COPY cert.cert /usr/local/share/ca-certificates/cert.crt
+RUN update-ca-certificates
 
 SHELL ["/bin/bash", "-c"]
 
@@ -35,7 +52,6 @@ RUN \
         nano \
         psmisc \
         sudo \
-        tini \
         wget
 
 
@@ -58,7 +74,8 @@ RUN \
         xauth \
         xinit \
         x11-xserver-utils \
-        xdg-utils
+        xdg-utils \
+        nvidia-driver-510
 
 
 ##############
@@ -98,7 +115,9 @@ RUN \
     DEBIAN_FRONTEND=noninteractive apt-get install -y ${ARG_APT_NO_RECOMMENDS:+--no-install-recommends} \
         mousepad \
         python3 \
-        systemctl \
+        tmux \
+        vim \
+        zsh \
         ${ARG_FEATURES_SCREENSHOOTING:+ristretto xfce4-screenshooter} \
         ${ARG_FEATURES_THUMBNAILING:+tumbler}
 
@@ -116,10 +135,13 @@ ARG ARG_VNC_RESOLUTION
 ARG ARG_VNC_VIEW_ONLY
 
 # wget -qO- https://github.com/accetto/tigervnc/releases/download/v1.12.0-mirror/tigervnc-1.12.0.x86_64.tar.gz | tar xz --strip 1 -C / \
-RUN \
-    wget -qO- https://sourceforge.net/projects/tigervnc/files/stable/1.12.0/tigervnc-1.12.0.x86_64.tar.gz | tar xz --strip 1 -C / \
-    && ln -s /usr/libexec/vncserver /usr/bin/vncserver \
-    && sed -i 's/exec(@cmd);/print "@cmd";\nexec(@cmd);/g' /usr/libexec/vncserver
+# wget -qO- https://sourceforge.net/projects/tigervnc/files/stable/1.12.0/tigervnc-1.12.0.x86_64.tar.gz | tar xz --strip 1 -C / \
+# RUN wget --no-check-certificate https://sourceforge.net/projects/tigervnc/files/stable/1.12.0/tigervnc-1.12.0.x86_64.tar.gz
+# RUN export SSL_CERT_DIR=/etc/ssl/certs
+RUN wget http://sourceforge.net/projects/tigervnc/files/stable/1.12.0/tigervnc-1.12.0.x86_64.tar.gz
+RUN tar -xf ./tigervnc-1.12.0.x86_64.tar.gz --strip 1 -C / 
+RUN ln -s /usr/libexec/vncserver /usr/bin/vncserver 
+RUN sed -i 's/exec(@cmd);/print "@cmd";\nexec(@cmd);/g' /usr/libexec/vncserver
 
 ENV \
     DISPLAY=${ARG_VNC_DISPLAY:-:1} \
@@ -220,21 +242,21 @@ ENV \
     FEATURES_BUILD_SLIM_VIRTUALGL=${ARG_APT_NO_RECOMMENDS:+1} \
     FEATURES_VIRTUALGL=1
 
-RUN \
-    --mount=type=cache,target=/var/cache/apt,from=stage_cache,source=/var/cache/apt \
-    --mount=type=cache,target=/var/lib/apt,from=stage_cache,source=/var/lib/apt \
-    VIRTUALGL_VERSION=${ARG_VIRTUALGL_VERSION} \
-    && wget -q "https://downloads.sourceforge.net/project/virtualgl/${VIRTUALGL_VERSION}/virtualgl_${VIRTUALGL_VERSION}_amd64.deb" -P /tmp \
-    && DEBIAN_FRONTEND=noninteractive apt-get install -y ${ARG_APT_NO_RECOMMENDS:+--no-install-recommends} \
-        "/tmp/virtualgl_${VIRTUALGL_VERSION}_amd64.deb" \
-    && rm -f \
-        "/tmp/virtualgl_${VIRTUALGL_VERSION}_amd64.deb" \
-    && /opt/VirtualGL/bin/vglserver_config -config +s +f -t
+RUN apt-get update && apt-get upgrade -y
+RUN --mount=type=cache,target=/var/cache/apt,from=stage_cache,source=/var/cache/apt
+RUN --mount=type=cache,target=/var/lib/apt,from=stage_cache,source=/var/lib/apt
+RUN wget -q "https://downloads.sourceforge.net/project/virtualgl/3.0/virtualgl_3.0_amd64.deb" -P /tmp 
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -y "/tmp/virtualgl_3.0_amd64.deb" 
+RUN rm -f "/tmp/virtualgl_3.0_amd64.deb"
+RUN nvidia-xconfig -a --allow-empty-initial-configuration \
+--virtual=1920x1200 --busid="132:0:0"
+RUN sed -i 's/Section "Device"/&\n\tOption "HardDPMS" "false"/' /etc/X11/xorg.conf
+RUN /opt/VirtualGL/bin/vglserver_config -config +s +f -t
 
     ### Set VirtualLG defaults, xauth bits, this adds a DRI line to xorg.conf
-    #/opt/VirtualGL/bin/vglserver_config -config +s +f -t
+    # /opt/VirtualGL/bin/vglserver_config -config +s +f -t
     ### access open to all users, because restricting users doesn't really work
-    #/opt/VirtualGL/bin/vglserver_config -config -s -f +t 
+    # /opt/VirtualGL/bin/vglserver_config -config -s -f +t 
 
 
 ####################
@@ -363,10 +385,85 @@ RUN \
     && chmod 755 -R "${STARTUPDIR}" \
     && "${STARTUPDIR}"/set_user_permissions.sh "${STARTUPDIR}" "${HOME}"
 
-USER 1001
+# Install APL self-signed certificate so I can install things from within the container
+RUN apt-get install -y ca-certificates
+COPY cert.cert /usr/local/share/ca-certificates/cert.crt
+RUN update-ca-certificates
 
-ENTRYPOINT [ "/usr/bin/tini", "--", "/dockerstartup/startup.sh" ]
-# ENTRYPOINT [ "/usr/bin/tini", "--", "tail", "-f", "/dev/null" ]
+WORKDIR "${HOME}"
+RUN apt install -y zip
+# Dracula terminal theme
+RUN wget https://github.com/dracula/xfce4-terminal/archive/master.zip && \
+    unzip ./master.zip && rm master.zip && \
+    mkdir -p "${HOME}"/.local/share/xfce4/terminal/colorschemes && \
+    cp ./xfce4-terminal-master/Dracula.theme "${HOME}"/.local/share/xfce4/terminal/colorschemes && \
+    rm -rf ./xfce4-terminal-master && \
+    tail -n 2 .local/share/xfce4/terminal/colorschemes/Dracula.theme >> .config/xfce4/terminal/terminalrc
+# Install Source Code Pro font and set in terminal
+RUN wget https://github.com/adobe-fonts/source-code-pro/releases/download/2.038R-ro%2F1.058R-it%2F1.018R-VAR/OTF-source-code-pro-2.038R-ro-1.058R-it.zip -O 1.058R-it.zip && \
+    mkdir -p "${HOME}"/.fonts && unzip 1.058R-it.zip -d scp-font/ && rm 1.058R-it.zip && \
+	cp scp-font/*.otf "${HOME}"/.fonts/ && rm -rf scp-font && fc-cache -f -v && \
+    echo "FontName=Source Code Pro 14" >> .config/xfce4/terminal/terminalrc
+
+# Dracula Icon pack
+RUN wget https://github.com/dracula/gtk/files/5214870/Dracula.zip && \
+    mkdir -p "${HOME}"/.icons/Dracula && \
+    unzip ./Dracula.zip && rm Dracula.zip && \
+    mv ./Dracula "${HOME}"/.icons/
+
+# Dracula Theme
+RUN wget https://github.com/dracula/gtk/archive/master.zip && \
+    unzip master.zip && rm master.zip && \
+    mkdir -p "${HOME}"/.themes/Dracula && \
+    cp -r ./gtk-master/* "${HOME}"/.themes/Dracula && \
+    rm -rf ./gtk-master
+
+RUN wget https://github.com/dracula/wallpaper/archive/master.zip && \
+    unzip ./master.zip && rm master.zip && \
+    mkdir -p /usr/share/xfce4/backdrops/ && \
+    cp ./wallpaper-master/* /usr/share/xfce4/backdrops/ && \
+    rm -rf ./wallpaper-master
+
+ENV XFCE_PANEL_MIGRATE_DEFAULT=1
+
+# Install tools
+# RUN apt-get -y install libqt5gui5 qttools5-dev-tools libopengl0 pyqt5-dev-tools python3-pyqt5
+
+# Setup dotfiles.
+RUN apt-get -y remove git git-man
+RUN wget https://apllinuxdepot.jhuapl.edu/linux/GIT-Openssl/git-2.30.2-18.04.tar -O ./git-debs.tar
+RUN mkdir -p ./debs && tar -xf ./git-debs.tar -C ./debs
+RUN apt-get -y install liberror-perl libcurl4
+RUN dpkg --install ./debs/git_2.30.2-0ppa1~ubuntu18.04.1_amd64.deb \
+    ./debs/git-man_2.30.2-0ppa1~ubuntu18.04.1_all.deb && \
+    rm -rf ./debs && rm git-debs.tar
+RUN usermod -s $(which zsh) "${ARG_HEADLESS_USER_NAME:-headless}"
+USER 1001
+RUN git config --global https.sslCAInfo /etc/ssl/certs/ca-certificates.crt
+RUN cd "${HOME}"
+RUN git clone https://github.com/pperanich/.tmux.git && \
+    ln -s -f .tmux/.tmux.conf && cp .tmux/.tmux.conf.local .
+RUN git clone https://github.com/pperanich/vimrc.git .vim_runtime && \
+    sh .vim_runtime/install_awesome_vimrc.sh
+RUN sh -c "$(wget -O- https://raw.githubusercontent.com/pperanich/ohmyzsh/master/tools/install.sh)"
+RUN wget https://github.com/dracula/zsh/archive/master.zip && unzip master.zip && rm master.zip && \
+    mv ./zsh-master/dracula.zsh-theme "${HOME}"/.oh-my-zsh/themes/ && \
+    mv ./zsh-master/lib "${HOME}"/.oh-my-zsh/themes/ && rm -rf ./zsh-master
+RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O "${HOME}"/miniconda.sh && \
+    bash "${HOME}"/miniconda.sh -b -p "${HOME}"/miniconda && rm "${HOME}"/miniconda.sh
+RUN "${HOME}"/miniconda/bin/conda init zsh
+RUN echo $'\
+export PIP_CERT=/etc/ssl/certs-certificates.crt\n\
+export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt\n\
+export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt\n\
+' >> "${HOME}"/.zshrc
+
+# Create a conda env for ezmsg
+RUN zsh && source "${HOME}"/.zshrc && "${HOME}"/miniconda/bin/conda create --name ezmsg-3.10 python=3.10
+RUN mkdir -p "${HOME}"/Documents/repos && git clone https://gitlab.jhuapl.edu/milsagw1/ezmsg.git \
+    "${HOME}"/Documents/repos/ezmsg
+
+ENTRYPOINT [ "/dockerstartup/startup.sh" ]
 
 ##################
 ### METADATA STAGE
@@ -395,3 +492,4 @@ LABEL \
 
 LABEL \
     any.accetto.version-sticker="${ARG_VERSION_STICKER}"
+
