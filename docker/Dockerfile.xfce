@@ -18,10 +18,10 @@ ARG ARG_FINAL_STAGE_BASE=merge_stage_browser
 # FROM nvidia/cuda:11.2.1-base-ubuntu18.04 as stage_cache
 FROM nvidia/cudagl:10.1-devel-ubuntu18.04 as stage_cache
 
-# Install APL self-signed certificate so I can install things from within the container
-RUN apt-get install -y ca-certificates
-COPY cert.cert /usr/local/share/ca-certificates/cert.crt
-RUN update-ca-certificates
+# # Install APL self-signed certificate so I can install things from within the container
+# RUN apt-get install -y ca-certificates
+# COPY cert.cert /usr/local/share/ca-certificates/cert.crt
+# RUN update-ca-certificates
 
 RUN rm -f /etc/apt/apt.conf.d/docker-clean; echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
 RUN apt-get update
@@ -37,10 +37,10 @@ RUN apt-get update
 # FROM nvidia/cuda:11.2.1-base-ubuntu18.04 as stage_essentials
 FROM nvidia/cudagl:10.1-devel-ubuntu18.04 as stage_essentials
 
-# Install APL self-signed certificate so I can install things from within the container
-RUN apt-get install -y ca-certificates
-COPY cert.cert /usr/local/share/ca-certificates/cert.crt
-RUN update-ca-certificates
+# # Install APL self-signed certificate so I can install things from within the container
+# RUN apt-get install -y ca-certificates
+# COPY cert.cert /usr/local/share/ca-certificates/cert.crt
+# RUN update-ca-certificates
 
 SHELL ["/bin/bash", "-c"]
 
@@ -248,8 +248,7 @@ RUN --mount=type=cache,target=/var/lib/apt,from=stage_cache,source=/var/lib/apt
 RUN wget -q "https://downloads.sourceforge.net/project/virtualgl/3.0/virtualgl_3.0_amd64.deb" -P /tmp 
 RUN DEBIAN_FRONTEND=noninteractive apt-get install -y "/tmp/virtualgl_3.0_amd64.deb" 
 RUN rm -f "/tmp/virtualgl_3.0_amd64.deb"
-RUN nvidia-xconfig -a --allow-empty-initial-configuration \
---virtual=1920x1200 --busid="132:0:0"
+RUN nvidia-xconfig -a --allow-empty-initial-configuration --use-display-device=None
 RUN sed -i 's/Section "Device"/&\n\tOption "HardDPMS" "false"/' /etc/X11/xorg.conf
 RUN /opt/VirtualGL/bin/vglserver_config -config +s +f -t
 
@@ -385,10 +384,10 @@ RUN \
     && chmod 755 -R "${STARTUPDIR}" \
     && "${STARTUPDIR}"/set_user_permissions.sh "${STARTUPDIR}" "${HOME}"
 
-# Install APL self-signed certificate so I can install things from within the container
-RUN apt-get install -y ca-certificates
-COPY cert.cert /usr/local/share/ca-certificates/cert.crt
-RUN update-ca-certificates
+# # Install APL self-signed certificate so I can install things from within the container
+# RUN apt-get install -y ca-certificates
+# COPY cert.cert /usr/local/share/ca-certificates/cert.crt
+# RUN update-ca-certificates
 
 WORKDIR "${HOME}"
 RUN apt install -y zip
@@ -430,13 +429,14 @@ ENV XFCE_PANEL_MIGRATE_DEFAULT=1
 # RUN apt-get -y install libqt5gui5 qttools5-dev-tools libopengl0 pyqt5-dev-tools python3-pyqt5
 
 # Setup dotfiles.
-RUN apt-get -y remove git git-man
-RUN wget https://apllinuxdepot.jhuapl.edu/linux/GIT-Openssl/git-2.30.2-18.04.tar -O ./git-debs.tar
-RUN mkdir -p ./debs && tar -xf ./git-debs.tar -C ./debs
-RUN apt-get -y install liberror-perl libcurl4
-RUN dpkg --install ./debs/git_2.30.2-0ppa1~ubuntu18.04.1_amd64.deb \
-    ./debs/git-man_2.30.2-0ppa1~ubuntu18.04.1_all.deb && \
-    rm -rf ./debs && rm git-debs.tar
+# RUN apt-get -y remove git git-man
+# RUN wget https://apllinuxdepot.jhuapl.edu/linux/GIT-Openssl/git-2.30.2-18.04.tar -O ./git-debs.tar
+# RUN mkdir -p ./debs && tar -xf ./git-debs.tar -C ./debs
+# RUN apt-get -y install liberror-perl libcurl4
+# RUN dpkg --install ./debs/git_2.30.2-0ppa1~ubuntu18.04.1_amd64.deb \
+#     ./debs/git-man_2.30.2-0ppa1~ubuntu18.04.1_all.deb && \
+#     rm -rf ./debs && rm git-debs.tar
+RUN apt-get -y install git git-man 
 RUN usermod -s $(which zsh) "${ARG_HEADLESS_USER_NAME:-headless}"
 USER 1001
 RUN git config --global https.sslCAInfo /etc/ssl/certs/ca-certificates.crt
@@ -458,10 +458,10 @@ export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt\n\
 export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt\n\
 ' >> "${HOME}"/.zshrc
 
-# Create a conda env for ezmsg
-RUN zsh && source "${HOME}"/.zshrc && "${HOME}"/miniconda/bin/conda create --name ezmsg-3.10 python=3.10
-RUN mkdir -p "${HOME}"/Documents/repos && git clone https://gitlab.jhuapl.edu/milsagw1/ezmsg.git \
-    "${HOME}"/Documents/repos/ezmsg
+# # Create a conda env for ezmsg
+# RUN zsh && source "${HOME}"/.zshrc && "${HOME}"/miniconda/bin/conda create --name ezmsg-3.10 python=3.10
+# RUN mkdir -p "${HOME}"/Documents/repos && git clone https://gitlab.jhuapl.edu/milsagw1/ezmsg.git \
+#     "${HOME}"/Documents/repos/ezmsg
 
 ENTRYPOINT [ "/dockerstartup/startup.sh" ]
 
